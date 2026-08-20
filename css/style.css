@@ -186,3 +186,21 @@ button:disabled {
 .hidden {
     display: none !important;
 }
+
+.cell.x {
+    color: #222;
+}
+
+.cell.o {
+    color: #444;
+}
+
+.cell.winner {
+    outline: 3px solid #222;
+    outline-offset: -3px;
+}
+
+.cell:disabled {
+    opacity: 1;
+    cursor: default;
+}
