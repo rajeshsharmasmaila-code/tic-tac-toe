@@ -283,6 +283,7 @@ joinGameBtn.addEventListener("click", async () => {
                 .from("games")
                 .select("*")
                 .eq("game_code", code)
+                .limit(1)
                 .maybeSingle();
 
         if (findError) {
