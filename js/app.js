@@ -494,10 +494,23 @@ async function playMove(index) {
     const newStatus = result ? "finished" : "playing";
     const newWinner = result || null;
 
+    // Show the move immediately on this device.
+    const optimisticGame = {
+        ...game,
+        board,
+        current_turn: nextTurn,
+        status: newStatus,
+        winner: newWinner
+    };
+
+    currentGameData = optimisticGame;
+    renderBoard(optimisticGame);
     gameCells.forEach(cell => cell.disabled = true);
     gameStatus.textContent = "Saving move...";
 
-    const { data, error } = await supabaseClient
+    // Do not use .select() here. UPDATE + SELECT can be rejected by
+    // SELECT RLS even when the UPDATE itself is allowed.
+    const { error } = await supabaseClient
         .from("games")
         .update({
             board,
@@ -507,29 +520,29 @@ async function playMove(index) {
         })
         .eq("id", game.id)
         .eq("status", "playing")
-        .eq("current_turn", mySymbol)
-        .select("*")
-        .maybeSingle();
+        .eq("current_turn", mySymbol);
 
     if (error) {
         console.error("Move error:", error);
-        gameStatus.textContent = "Could not save move. Please try again.";
+        gameStatus.textContent = "Could not save move: " + error.message;
         await refreshGame(game.id);
         return;
     }
 
-    if (!data) {
-        gameStatus.textContent = "Move was not accepted. It may be the other player's turn.";
-        await refreshGame(game.id);
-        return;
-    }
-
-    await showGame(data);
+    // Load the authoritative database state after saving.
+    await refreshGame(game.id);
 }
 
 gameCells.forEach(cell => {
     cell.addEventListener("click", () => {
-        playMove(Number(cell.dataset.index));
+        const index = Number(cell.dataset.index);
+        console.log("Cell clicked:", index, {
+            game: currentGameData?.id,
+            status: currentGameData?.status,
+            turn: currentGameData?.current_turn,
+            mySymbol: getMySymbol(currentGameData)
+        });
+        playMove(index);
     });
 });
 
