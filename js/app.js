@@ -33,6 +33,7 @@ const gameBoard = document.getElementById("game-board");
 let currentUser = null;
 let currentGameData = null;
 let realtimeChannel = null;
+let waitingPollTimer = null;
 
 // ==========================================
 // SIGN UP
@@ -94,6 +95,8 @@ loginBtn.addEventListener("click", async () => {
 // ==========================================
 
 logoutBtn.addEventListener("click", async () => {
+    stopWaitingForPlayerPolling();
+
     if (realtimeChannel) {
         await supabaseClient.removeChannel(realtimeChannel);
         realtimeChannel = null;
@@ -215,6 +218,7 @@ createGameBtn.addEventListener("click", async () => {
         currentGameData = data;
         await showGame(data);
         subscribeToGame(data.id);
+        startWaitingForPlayerPolling(data.id);
 
     } catch (error) {
         console.error(error);
@@ -380,7 +384,13 @@ async function showGame(game) {
         gameStatus.textContent =
             "Waiting for Player 2...";
         gameBoard.classList.add("hidden");
+
+        // Realtime is useful when available, but polling guarantees
+        // Player 1 detects Player 2 even if Realtime is unavailable.
+        startWaitingForPlayerPolling(game.id);
     } else {
+        stopWaitingForPlayerPolling();
+
         gameStatus.textContent =
             "Game ready!";
         gameBoard.classList.remove("hidden");
@@ -408,6 +418,59 @@ async function getPlayerName(userId) {
     }
 
     return data.username;
+}
+
+// ==========================================
+// WAITING FOR PLAYER 2 POLLING
+// ==========================================
+
+function startWaitingForPlayerPolling(gameId) {
+    if (waitingPollTimer) {
+        return;
+    }
+
+    const checkGame = async () => {
+        try {
+            const { data, error } =
+                await supabaseClient
+                    .from("games")
+                    .select("*")
+                    .eq("id", gameId)
+                    .maybeSingle();
+
+            if (error) {
+                console.error("Waiting poll error:", error);
+                return;
+            }
+
+            if (!data) {
+                return;
+            }
+
+            currentGameData = data;
+
+            if (data.status !== "waiting" || data.player_o) {
+                await showGame(data);
+
+                // Re-subscribe in case the original Realtime channel
+                // was not connected.
+                subscribeToGame(data.id);
+            }
+        } catch (error) {
+            console.error("Waiting poll exception:", error);
+        }
+    };
+
+    // Check immediately, then every second.
+    checkGame();
+    waitingPollTimer = setInterval(checkGame, 1000);
+}
+
+function stopWaitingForPlayerPolling() {
+    if (waitingPollTimer) {
+        clearInterval(waitingPollTimer);
+        waitingPollTimer = null;
+    }
 }
 
 // ==========================================
@@ -452,6 +515,7 @@ function subscribeToGame(gameId) {
 // ==========================================
 
 function resetGameUI() {
+    stopWaitingForPlayerPolling();
     currentGameData = null;
 
     currentGame.classList.add("hidden");
