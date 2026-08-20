@@ -5,13 +5,8 @@
 body {
     margin: 0;
     min-height: 100vh;
-
-    font-family:
-        Arial,
-        sans-serif;
-
+    font-family: Arial, sans-serif;
     background: #f4f6f8;
-
     display: flex;
     justify-content: center;
     align-items: center;
@@ -19,21 +14,24 @@ body {
 
 .app {
     width: min(92%, 500px);
-
     background: white;
-
     padding: 30px;
-
     border-radius: 16px;
-
-    box-shadow:
-        0 10px 30px rgba(0, 0, 0, 0.08);
-
+    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.08);
     text-align: center;
 }
 
 h1 {
     margin-bottom: 5px;
+}
+
+h2 {
+    margin-top: 20px;
+}
+
+h3 {
+    margin-top: 0;
+    margin-bottom: 10px;
 }
 
 .subtitle {
@@ -42,36 +40,34 @@ h1 {
 
 input {
     width: 100%;
-
     padding: 12px;
-
     margin: 6px 0;
-
     border: 1px solid #ccc;
-
     border-radius: 8px;
-
     font-size: 16px;
 }
 
 button {
     padding: 12px 18px;
-
     border: none;
-
     border-radius: 8px;
-
     cursor: pointer;
-
     font-size: 16px;
+    background: #eeeeee;
 }
 
-.buttons,
-.game-actions {
+button:hover {
+    background: #dddddd;
+}
+
+button:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+}
+
+.buttons {
     display: flex;
-
     gap: 10px;
-
     margin-top: 10px;
 }
 
@@ -83,26 +79,85 @@ button {
     display: none !important;
 }
 
+.game-panel {
+    margin-top: 15px;
+    padding: 18px;
+    border: 1px solid #ddd;
+    border-radius: 12px;
+    background: #fafafa;
+}
+
+.game-panel button {
+    width: 100%;
+    margin-top: 8px;
+}
+
+.game-code-display {
+    margin-top: 20px;
+    padding: 18px;
+    border-radius: 12px;
+    background: #f0f0f0;
+}
+
+.game-code-display span {
+    display: block;
+    font-size: 14px;
+    color: #666;
+    margin-bottom: 5px;
+}
+
+.game-code-display strong {
+    display: block;
+    font-size: 32px;
+    letter-spacing: 6px;
+}
+
+.players {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 10px;
+    margin-top: 15px;
+}
+
+.player-card {
+    padding: 14px;
+    border-radius: 10px;
+    background: #f4f4f4;
+}
+
+.player-card span {
+    display: block;
+    font-size: 13px;
+    color: #666;
+    margin-bottom: 5px;
+}
+
+.player-card strong {
+    display: block;
+    word-break: break-word;
+}
+
+#game-message {
+    min-height: 24px;
+}
+
+#game-status {
+    margin-top: 15px;
+    font-weight: bold;
+}
+
 .board {
     width: min(90vw, 330px);
-
     aspect-ratio: 1;
-
     margin: 25px auto;
-
     display: grid;
-
-    grid-template-columns:
-        repeat(3, 1fr);
-
+    grid-template-columns: repeat(3, 1fr);
     gap: 8px;
 }
 
 .cell {
     font-size: 42px;
-
     font-weight: bold;
-
     background: #eeeeee;
 }
 
@@ -112,4 +167,19 @@ button {
 
 #auth-message {
     min-height: 24px;
+}
+
+@media (max-width: 480px) {
+    .app {
+        padding: 20px;
+    }
+
+    .players {
+        grid-template-columns: 1fr;
+    }
+
+    .game-code-display strong {
+        font-size: 27px;
+        letter-spacing: 4px;
+    }
 }
