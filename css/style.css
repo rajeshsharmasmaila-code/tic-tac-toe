@@ -75,9 +75,7 @@ button:disabled {
     flex: 1;
 }
 
-.hidden {
-    display: none !important;
-}
+
 
 .game-panel {
     margin-top: 15px;
@@ -172,6 +170,8 @@ button:disabled {
 @media (max-width: 480px) {
     .app {
         padding: 20px;
+
+        
     }
 
     .players {
@@ -182,4 +182,7 @@ button:disabled {
         font-size: 27px;
         letter-spacing: 4px;
     }
+}
+.hidden {
+    display: none !important;
 }
