@@ -278,25 +278,19 @@ joinGameBtn.addEventListener("click", async () => {
     gameMessage.textContent = "Finding game...";
 
     try {
-        const { data: game, error } =
+        const { data: game, error: findError } =
             await supabaseClient
                 .from("games")
                 .select("*")
                 .eq("game_code", code)
                 .maybeSingle();
 
-        if (error) {
-            throw error;
+        if (findError) {
+            throw findError;
         }
 
         if (!game) {
             gameMessage.textContent = "Game not found.";
-            return;
-        }
-
-        if (game.player_o) {
-            gameMessage.textContent =
-                "This game already has two players.";
             return;
         }
 
@@ -309,7 +303,13 @@ joinGameBtn.addEventListener("click", async () => {
             return;
         }
 
-        const { data: updatedGame, error: updateError } =
+        if (game.player_o) {
+            gameMessage.textContent =
+                "This game already has two players.";
+            return;
+        }
+
+        const { error: updateError } =
             await supabaseClient
                 .from("games")
                 .update({
@@ -318,12 +318,27 @@ joinGameBtn.addEventListener("click", async () => {
                 })
                 .eq("id", game.id)
                 .is("player_o", null)
-                .eq("status", "waiting")
-                .select()
-                .single();
+                .eq("status", "waiting");
 
         if (updateError) {
             throw updateError;
+        }
+
+        const { data: updatedGame, error: fetchError } =
+            await supabaseClient
+                .from("games")
+                .select("*")
+                .eq("id", game.id)
+                .maybeSingle();
+
+        if (fetchError) {
+            throw fetchError;
+        }
+
+        if (!updatedGame) {
+            throw new Error(
+                "Game was updated but could not be loaded."
+            );
         }
 
         currentGameData = updatedGame;
@@ -332,7 +347,8 @@ joinGameBtn.addEventListener("click", async () => {
         subscribeToGame(updatedGame.id);
 
     } catch (error) {
-        console.error(error);
+        console.error("Join game error:", error);
+
         gameMessage.textContent =
             "Could not join game: " + error.message;
     } finally {
