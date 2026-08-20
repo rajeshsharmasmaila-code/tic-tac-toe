@@ -25,6 +25,7 @@ const playerXName = document.getElementById("player-x-name");
 const playerOName = document.getElementById("player-o-name");
 const gameStatus = document.getElementById("game-status");
 const gameBoard = document.getElementById("game-board");
+const gameCells = Array.from(document.querySelectorAll(".cell"));
 
 // ==========================================
 // CURRENT STATE
@@ -34,6 +35,7 @@ let currentUser = null;
 let currentGameData = null;
 let realtimeChannel = null;
 let waitingPollTimer = null;
+let gamePollTimer = null;
 
 // ==========================================
 // SIGN UP
@@ -96,6 +98,7 @@ loginBtn.addEventListener("click", async () => {
 
 logoutBtn.addEventListener("click", async () => {
     stopWaitingForPlayerPolling();
+    stopGamePolling();
 
     if (realtimeChannel) {
         await supabaseClient.removeChannel(realtimeChannel);
@@ -244,6 +247,7 @@ async function generateUniqueGameCode() {
                 .from("games")
                 .select("id")
                 .eq("game_code", code)
+                .limit(1)
                 .maybeSingle();
 
         if (error) {
@@ -305,6 +309,7 @@ joinGameBtn.addEventListener("click", async () => {
 
             await showGame(game);
             subscribeToGame(game.id);
+            startGamePolling(game.id);
             return;
         }
 
@@ -350,6 +355,7 @@ joinGameBtn.addEventListener("click", async () => {
 
         await showGame(updatedGame);
         subscribeToGame(updatedGame.id);
+        startGamePolling(updatedGame.id);
 
     } catch (error) {
         console.error("Join game error:", error);
@@ -369,31 +375,173 @@ async function showGame(game) {
     currentGameData = game;
 
     currentGame.classList.remove("hidden");
-
     displayGameCode.textContent = game.game_code;
 
-    playerXName.textContent =
-        await getPlayerName(game.player_x);
+    playerXName.textContent = await getPlayerName(game.player_x);
+    playerOName.textContent = game.player_o
+        ? await getPlayerName(game.player_o)
+        : "Waiting...";
 
-    playerOName.textContent =
-        game.player_o
-            ? await getPlayerName(game.player_o)
-            : "Waiting...";
+    renderBoard(game);
 
     if (game.status === "waiting") {
-        gameStatus.textContent =
-            "Waiting for Player 2...";
+        gameStatus.textContent = "Waiting for Player 2...";
         gameBoard.classList.add("hidden");
-
-        // Realtime is useful when available, but polling guarantees
-        // Player 1 detects Player 2 even if Realtime is unavailable.
         startWaitingForPlayerPolling(game.id);
-    } else {
-        stopWaitingForPlayerPolling();
+        stopGamePolling();
+        return;
+    }
 
-        gameStatus.textContent =
-            "Game ready!";
-        gameBoard.classList.remove("hidden");
+    stopWaitingForPlayerPolling();
+    gameBoard.classList.remove("hidden");
+    startGamePolling(game.id);
+
+    if (game.status === "finished") {
+        if (game.winner === "draw") {
+            gameStatus.textContent = "Draw game!";
+        } else {
+            gameStatus.textContent = `Player ${game.winner} wins!`;
+        }
+        setBoardEnabled(false);
+        return;
+    }
+
+    const mySymbol = getMySymbol(game);
+    if (mySymbol && game.current_turn === mySymbol) {
+        gameStatus.textContent = `Your turn (${mySymbol})`;
+        setBoardEnabled(true);
+    } else if (game.current_turn) {
+        gameStatus.textContent = `Player ${game.current_turn}'s turn`;
+        setBoardEnabled(false);
+    }
+}
+
+function getMySymbol(game) {
+    if (!currentUser || !game) return null;
+    if (game.player_x === currentUser.id) return "X";
+    if (game.player_o === currentUser.id) return "O";
+    return null;
+}
+
+function normalizeBoard(board) {
+    return Array.isArray(board) && board.length === 9
+        ? board.map(value => value || "")
+        : ["", "", "", "", "", "", "", "", ""];
+}
+
+function renderBoard(game) {
+    const board = normalizeBoard(game.board);
+    gameCells.forEach((cell, index) => {
+        const value = board[index];
+        cell.textContent = value;
+        cell.classList.toggle("x", value === "X");
+        cell.classList.toggle("o", value === "O");
+        cell.classList.remove("winner");
+    });
+
+    if (game.status === "finished") {
+        const winningLine = getWinningLine(board, game.winner);
+        winningLine.forEach(index => gameCells[index].classList.add("winner"));
+    }
+}
+
+function setBoardEnabled(enabled) {
+    gameCells.forEach(cell => {
+        const index = Number(cell.dataset.index);
+        const board = normalizeBoard(currentGameData?.board);
+        cell.disabled = !enabled || Boolean(board[index]);
+    });
+}
+
+function getWinningLine(board, winner) {
+    if (!winner || winner === "draw") return [];
+    const lines = [
+        [0,1,2], [3,4,5], [6,7,8],
+        [0,3,6], [1,4,7], [2,5,8],
+        [0,4,8], [2,4,6]
+    ];
+    return lines.find(line => line.every(index => board[index] === winner)) || [];
+}
+
+function getWinner(board) {
+    const lines = [
+        [0,1,2], [3,4,5], [6,7,8],
+        [0,3,6], [1,4,7], [2,5,8],
+        [0,4,8], [2,4,6]
+    ];
+    for (const [a,b,c] of lines) {
+        if (board[a] && board[a] === board[b] && board[a] === board[c]) {
+            return board[a];
+        }
+    }
+    return board.every(Boolean) ? "draw" : null;
+}
+
+async function playMove(index) {
+    if (!currentUser || !currentGameData) return;
+    const game = currentGameData;
+    if (game.status !== "playing") return;
+
+    const mySymbol = getMySymbol(game);
+    if (!mySymbol || game.current_turn !== mySymbol) return;
+
+    const board = normalizeBoard(game.board);
+    if (board[index]) return;
+
+    board[index] = mySymbol;
+    const result = getWinner(board);
+    const nextTurn = result ? game.current_turn : (mySymbol === "X" ? "O" : "X");
+    const newStatus = result ? "finished" : "playing";
+    const newWinner = result || null;
+
+    gameCells.forEach(cell => cell.disabled = true);
+    gameStatus.textContent = "Saving move...";
+
+    const { data, error } = await supabaseClient
+        .from("games")
+        .update({
+            board,
+            current_turn: nextTurn,
+            status: newStatus,
+            winner: newWinner
+        })
+        .eq("id", game.id)
+        .eq("status", "playing")
+        .eq("current_turn", mySymbol)
+        .select("*")
+        .maybeSingle();
+
+    if (error) {
+        console.error("Move error:", error);
+        gameStatus.textContent = "Could not save move. Please try again.";
+        await refreshGame(game.id);
+        return;
+    }
+
+    if (!data) {
+        gameStatus.textContent = "Move was not accepted. It may be the other player's turn.";
+        await refreshGame(game.id);
+        return;
+    }
+
+    await showGame(data);
+}
+
+gameCells.forEach(cell => {
+    cell.addEventListener("click", () => {
+        playMove(Number(cell.dataset.index));
+    });
+});
+
+async function refreshGame(gameId) {
+    const { data, error } = await supabaseClient
+        .from("games")
+        .select("*")
+        .eq("id", gameId)
+        .maybeSingle();
+
+    if (!error && data) {
+        await showGame(data);
     }
 }
 
@@ -474,6 +622,33 @@ function stopWaitingForPlayerPolling() {
 }
 
 // ==========================================
+// ACTIVE GAME POLLING
+// ==========================================
+
+function startGamePolling(gameId) {
+    if (gamePollTimer) return;
+
+    const checkGame = async () => {
+        if (!currentGameData || currentGameData.id !== gameId) return;
+        if (currentGameData.status === "finished") {
+            stopGamePolling();
+            return;
+        }
+        await refreshGame(gameId);
+    };
+
+    checkGame();
+    gamePollTimer = setInterval(checkGame, 1000);
+}
+
+function stopGamePolling() {
+    if (gamePollTimer) {
+        clearInterval(gamePollTimer);
+        gamePollTimer = null;
+    }
+}
+
+// ==========================================
 // REALTIME GAME UPDATES
 // ==========================================
 
@@ -516,6 +691,7 @@ function subscribeToGame(gameId) {
 
 function resetGameUI() {
     stopWaitingForPlayerPolling();
+    stopGamePolling();
     currentGameData = null;
 
     currentGame.classList.add("hidden");
