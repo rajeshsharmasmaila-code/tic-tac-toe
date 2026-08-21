@@ -204,3 +204,52 @@ button:disabled {
     opacity: 1;
     cursor: default;
 }
+
+.game-actions {
+    display: flex;
+    gap: 10px;
+    margin: 15px auto 0;
+    justify-content: center;
+    flex-wrap: wrap;
+}
+
+.game-actions button {
+    min-width: 150px;
+}
+
+.history-section {
+    margin-top: 25px;
+    text-align: left;
+}
+
+.history-section h2 {
+    text-align: center;
+}
+
+#history-list {
+    display: grid;
+    gap: 10px;
+}
+
+.history-card {
+    border: 1px solid #ddd;
+    border-radius: 10px;
+    padding: 12px;
+    background: #fafafa;
+}
+
+.history-card > div:first-child {
+    display: flex;
+    justify-content: space-between;
+    gap: 10px;
+}
+
+.history-card span {
+    color: #777;
+    font-size: 12px;
+}
+
+.history-result {
+    margin-top: 6px;
+    font-weight: bold;
+}
