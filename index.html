@@ -28,11 +28,42 @@
         </section>
 
         <section id="user-section" class="hidden">
-            <p>
-                Logged in as:
-                <strong id="user-email"></strong>
-            </p>
+            <div class="profile-header">
+                <div id="profile-avatar" class="profile-avatar">🙂</div>
+                <div class="profile-header-info">
+                    <strong id="profile-username-display">Player</strong>
+                    <span id="user-email"></span>
+                </div>
+            </div>
             <button id="logout-btn">Logout</button>
+        </section>
+
+        <section id="profile-section" class="dashboard-section hidden">
+            <h2>Profile</h2>
+            <div class="profile-editor">
+                <label for="username-input">Username</label>
+                <input id="username-input" type="text" maxlength="20" placeholder="Username">
+                <label for="avatar-input">Avatar</label>
+                <input id="avatar-input" type="text" maxlength="2" placeholder="🙂">
+                <button id="save-profile-btn">Save Profile</button>
+                <p id="profile-message"></p>
+            </div>
+        </section>
+
+        <section id="stats-section" class="dashboard-section hidden">
+            <h2>My Statistics</h2>
+            <div class="stats-grid">
+                <div class="stat-card"><strong id="stat-games">0</strong><span>Games</span></div>
+                <div class="stat-card"><strong id="stat-wins">0</strong><span>Wins</span></div>
+                <div class="stat-card"><strong id="stat-losses">0</strong><span>Losses</span></div>
+                <div class="stat-card"><strong id="stat-draws">0</strong><span>Draws</span></div>
+                <div class="stat-card"><strong id="stat-winrate">0%</strong><span>Win Rate</span></div>
+            </div>
+        </section>
+
+        <section id="leaderboard-section" class="dashboard-section hidden">
+            <h2>Leaderboard</h2>
+            <div id="leaderboard-list"><p>Loading leaderboard...</p></div>
         </section>
 
         <section id="game-section" class="hidden">
