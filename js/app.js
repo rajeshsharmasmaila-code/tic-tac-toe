@@ -282,6 +282,29 @@ async function updateUI(user) {
 }
 
 // ==========================================
+// GET PLAYER NAME
+// ==========================================
+
+async function getPlayerName(userId) {
+    if (!userId) {
+        return "Waiting...";
+    }
+
+    const { data, error } =
+        await supabaseClient
+            .from("profiles")
+            .select("username")
+            .eq("id", userId)
+            .maybeSingle();
+
+    if (error || !data) {
+        return "Player";
+    }
+
+    return data.username || "Player";
+}
+
+// ==========================================
 // CREATE PROFILE IF NEEDED
 // ==========================================
 
