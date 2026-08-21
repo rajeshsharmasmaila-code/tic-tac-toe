@@ -53,6 +53,7 @@ let currentUser = null;
 let currentGameData = null;
 let realtimeChannel = null;
 let waitingPollTimer = null;
+let rematchPollTimer = null;
 let gamePollTimer = null;
 let moveInProgress = false;
 let rematchCreating = false;
@@ -680,6 +681,7 @@ joinGameBtn.addEventListener("click", async () => {
 // ==========================================
 
 async function showGame(game) {
+    if (rematchPollTimer) { clearInterval(rematchPollTimer); rematchPollTimer = null; }
     // When Player X creates the rematch, Player O learns the new game
     // through the old game's update and automatically switches to it.
     if (game.rematch_game_id && currentUser && game.player_o === currentUser.id && game.id !== game.rematch_game_id) {
