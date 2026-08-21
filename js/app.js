@@ -36,6 +36,7 @@ let currentGameData = null;
 let realtimeChannel = null;
 let waitingPollTimer = null;
 let gamePollTimer = null;
+let moveInProgress = false;
 
 // ==========================================
 // SIGN UP
@@ -478,6 +479,7 @@ function getWinner(board) {
 }
 
 async function playMove(index) {
+    if (moveInProgress) return;
     if (!currentUser || !currentGameData) return;
     const game = currentGameData;
     if (game.status !== "playing") return;
@@ -488,6 +490,7 @@ async function playMove(index) {
     const board = normalizeBoard(game.board);
     if (board[index]) return;
 
+    moveInProgress = true;
     board[index] = mySymbol;
     const result = getWinner(board);
     const nextTurn = result ? game.current_turn : (mySymbol === "X" ? "O" : "X");
@@ -526,11 +529,13 @@ async function playMove(index) {
         console.error("Move error:", error);
         gameStatus.textContent = "Could not save move: " + error.message;
         await refreshGame(game.id);
+        moveInProgress = false;
         return;
     }
 
     // Load the authoritative database state after saving.
     await refreshGame(game.id);
+    moveInProgress = false;
 }
 
 gameCells.forEach(cell => {
@@ -643,6 +648,7 @@ function startGamePolling(gameId) {
 
     const checkGame = async () => {
         if (!currentGameData || currentGameData.id !== gameId) return;
+        if (moveInProgress) return;
         if (currentGameData.status === "finished") {
             stopGamePolling();
             return;
@@ -687,7 +693,9 @@ function subscribeToGame(gameId) {
                         payload.new
                     );
 
-                    await showGame(payload.new);
+                    if (!moveInProgress) {
+                        await showGame(payload.new);
+                    }
                 }
             )
             .subscribe((status) => {
