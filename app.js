@@ -52,11 +52,10 @@ const statWinrate = document.getElementById("stat-winrate");
 let currentUser = null;
 let currentGameData = null;
 let realtimeChannel = null;
-let waitingPollTimer = null;
-let rematchPollTimer = null;
+let realtimeGameId = null;
 let gamePollTimer = null;
 let moveInProgress = false;
-let rematchCreating = false;
+let lastHistoryGameId = null;
 
 // ==========================================
 // SIGN UP
@@ -118,12 +117,12 @@ loginBtn.addEventListener("click", async () => {
 // ==========================================
 
 logoutBtn.addEventListener("click", async () => {
-    stopWaitingForPlayerPolling();
     stopGamePolling();
 
     if (realtimeChannel) {
         await supabaseClient.removeChannel(realtimeChannel);
         realtimeChannel = null;
+        realtimeGameId = null;
     }
 
     await supabaseClient.auth.signOut();
@@ -204,8 +203,9 @@ function escapeHtml(value) {
 
 async function requestRematch() {
     if (!currentUser || !currentGameData || currentGameData.status !== "finished") return;
-    rematchBtn.disabled = true;
     const column = currentGameData.player_x === currentUser.id ? "rematch_x" : "rematch_o";
+
+    rematchBtn.disabled = true;
     const patch = {};
     patch[column] = true;
 
@@ -222,61 +222,7 @@ async function requestRematch() {
     }
 
     gameMessage.textContent = "Rematch requested. Waiting for the other player...";
-    await refreshGame(currentGameData.id);
-    rematchBtn.disabled = false;
-    await maybeCreateRematch(currentGameData);
-}
-
-async function maybeCreateRematch(game) {
-    if (rematchCreating || !game || game.status !== "finished") return;
-    if (!game.rematch_x || !game.rematch_o) return;
-
-    // Only Player X creates the new game, avoiding two games being created.
-    if (!currentUser || game.player_x !== currentUser.id) {
-        gameMessage.textContent = "Both players agreed. Player X is starting the rematch...";
-        return;
-    }
-
-    rematchCreating = true;
-    try {
-        const gameCode = await generateUniqueGameCode();
-        const { data, error } = await supabaseClient
-            .from("games")
-            .insert({
-                game_code: gameCode,
-                player_x: game.player_x,
-                player_o: game.player_o,
-                board: ["", "", "", "", "", "", "", "", ""],
-                current_turn: "X",
-                status: "playing",
-                winner: null,
-                rematch_x: false,
-                rematch_o: false
-            })
-            .select()
-            .single();
-
-        if (error) throw error;
-
-        const { error: linkError } = await supabaseClient
-            .from("games")
-            .update({ rematch_game_id: data.id })
-            .eq("id", game.id);
-
-        if (linkError) {
-            throw linkError;
-        }
-
-        await showGame(data);
-        subscribeToGame(data.id);
-        startGamePolling(data.id);
-        await loadGameHistory();
-    } catch (error) {
-        console.error("Rematch creation error:", error);
-        gameMessage.textContent = "Could not start rematch: " + error.message;
-    } finally {
-        rematchCreating = false;
-    }
+    await reconcile();
 }
 
 async function startNewGame() {
@@ -321,6 +267,7 @@ async function updateUI(user) {
         await loadGameHistory();
         await loadMyStats();
         await loadLeaderboard();
+        await loadActiveGame();
     } else {
         authSection.classList.remove("hidden");
         userSection.classList.add("hidden");
@@ -538,7 +485,7 @@ createGameBtn.addEventListener("click", async () => {
         currentGameData = data;
         await showGame(data);
         subscribeToGame(data.id);
-        startWaitingForPlayerPolling(data.id);
+        startGamePolling();
 
     } catch (error) {
         console.error(error);
@@ -626,7 +573,7 @@ joinGameBtn.addEventListener("click", async () => {
 
             await showGame(game);
             subscribeToGame(game.id);
-            startGamePolling(game.id);
+            startGamePolling();
             return;
         }
 
@@ -672,7 +619,7 @@ joinGameBtn.addEventListener("click", async () => {
 
         await showGame(updatedGame);
         subscribeToGame(updatedGame.id);
-        startGamePolling(updatedGame.id);
+        startGamePolling();
 
     } catch (error) {
         console.error("Join game error:", error);
@@ -689,27 +636,9 @@ joinGameBtn.addEventListener("click", async () => {
 // ==========================================
 
 async function showGame(game) {
-    if (rematchPollTimer) { clearInterval(rematchPollTimer); rematchPollTimer = null; }
-    // When Player X creates the rematch, Player O learns the new game
-    // through the old game's update and automatically switches to it.
-    if (game.rematch_game_id && currentUser && game.player_o === currentUser.id && game.id !== game.rematch_game_id) {
-        const { data: rematchGame, error } = await supabaseClient
-            .from("games")
-            .select("*")
-            .eq("id", game.rematch_game_id)
-            .maybeSingle();
-
-        if (!error && rematchGame) {
-            currentGameData = rematchGame;
-            await showGame(rematchGame);
-            subscribeToGame(rematchGame.id);
-            startGamePolling(rematchGame.id);
-            return;
-        }
-    }
+    if (!game || !currentUser) return;
 
     currentGameData = game;
-
     currentGame.classList.remove("hidden");
     displayGameCode.textContent = game.game_code;
 
@@ -723,14 +652,12 @@ async function showGame(game) {
     if (game.status === "waiting") {
         gameStatus.textContent = "Waiting for Player 2...";
         gameBoard.classList.add("hidden");
-        startWaitingForPlayerPolling(game.id);
-        stopGamePolling();
+        if (rematchBtn) rematchBtn.classList.add("hidden");
+        if (newGameBtn) newGameBtn.classList.add("hidden");
         return;
     }
 
-    stopWaitingForPlayerPolling();
     gameBoard.classList.remove("hidden");
-    startGamePolling(game.id);
 
     if (game.status === "finished") {
         if (game.winner === "draw") {
@@ -738,17 +665,34 @@ async function showGame(game) {
         } else {
             gameStatus.textContent = `Player ${game.winner} wins!`;
         }
+
         setBoardEnabled(false);
+
         if (rematchBtn) {
             rematchBtn.classList.remove("hidden");
-            const myFlag = game.player_x === currentUser?.id ? game.rematch_x : game.rematch_o;
-            const otherFlag = game.player_x === currentUser?.id ? game.rematch_o : game.rematch_x;
-            rematchBtn.textContent = myFlag ? (otherFlag ? "Starting rematch..." : "Rematch requested") : "Request Rematch";
-            rematchBtn.disabled = Boolean(myFlag);
+            const myFlag = game.player_x === currentUser.id ? Boolean(game.rematch_x) : Boolean(game.rematch_o);
+            const otherFlag = game.player_x === currentUser.id ? Boolean(game.rematch_o) : Boolean(game.rematch_x);
+
+            if (game.rematch_game_id) {
+                rematchBtn.textContent = "Rematch ready";
+                rematchBtn.disabled = true;
+            } else if (myFlag && otherFlag) {
+                rematchBtn.textContent = "Starting rematch...";
+                rematchBtn.disabled = true;
+            } else if (myFlag) {
+                rematchBtn.textContent = "Rematch requested";
+                rematchBtn.disabled = true;
+            } else {
+                rematchBtn.textContent = "Request Rematch";
+                rematchBtn.disabled = false;
+            }
         }
+
         if (newGameBtn) newGameBtn.classList.remove("hidden");
-        await maybeCreateRematch(game);
-        await loadGameHistory();
+        if (lastHistoryGameId !== game.id) {
+            lastHistoryGameId = game.id;
+            await loadGameHistory();
+        }
         return;
     }
 
@@ -899,113 +843,115 @@ gameCells.forEach(cell => {
     });
 });
 
-async function refreshGame(gameId) {
+async function fetchGame(gameId) {
     const { data, error } = await supabaseClient
         .from("games")
         .select("*")
         .eq("id", gameId)
         .maybeSingle();
 
-    if (!error && data) {
-        await showGame(data);
+    if (error) throw error;
+    return data;
+}
+
+async function refreshGame(gameId) {
+    try {
+        const data = await fetchGame(gameId);
+        if (data) await reconcile(data);
+    } catch (error) {
+        console.error("Game refresh error:", error);
     }
 }
 
 // ==========================================
-// GET PLAYER NAME
+// RESUMABLE GAME STATE
 // ==========================================
 
-async function getPlayerName(userId) {
-    if (!userId) {
-        return "Waiting...";
-    }
+async function loadActiveGame() {
+    if (!currentUser) return;
 
-    const { data, error } =
-        await supabaseClient
-            .from("profiles")
-            .select("username")
-            .eq("id", userId)
-            .maybeSingle();
+    try {
+        const { data, error } = await supabaseClient
+            .from("games")
+            .select("*")
+            .or(`player_x.eq.${currentUser.id},player_o.eq.${currentUser.id}`)
+            .order("created_at", { ascending: false })
+            .limit(50);
 
-    if (error || !data) {
-        return "Player";
-    }
-
-    return data.username;
-}
-
-// ==========================================
-// WAITING FOR PLAYER 2 POLLING
-// ==========================================
-
-function startWaitingForPlayerPolling(gameId) {
-    if (waitingPollTimer) {
-        return;
-    }
-
-    const checkGame = async () => {
-        try {
-            const { data, error } =
-                await supabaseClient
-                    .from("games")
-                    .select("*")
-                    .eq("id", gameId)
-                    .maybeSingle();
-
-            if (error) {
-                console.error("Waiting poll error:", error);
-                return;
-            }
-
-            if (!data) {
-                return;
-            }
-
-            currentGameData = data;
-
-            if (data.status !== "waiting" || data.player_o) {
-                await showGame(data);
-
-                // Re-subscribe in case the original Realtime channel
-                // was not connected.
-                subscribeToGame(data.id);
-            }
-        } catch (error) {
-            console.error("Waiting poll exception:", error);
+        if (error) throw error;
+        if (!data || data.length === 0) {
+            startGamePolling();
+            return;
         }
-    };
 
-    // Check immediately, then every second.
-    checkGame();
-    waitingPollTimer = setInterval(checkGame, 1000);
-}
+        const playing = data.filter(g => g.status === "playing")[0];
+        const waiting = data.filter(g => g.status === "waiting")[0];
+        const rematchPending = data.find(g =>
+            g.status === "finished" &&
+            (g.rematch_x || g.rematch_o || g.rematch_game_id)
+        );
 
-function stopWaitingForPlayerPolling() {
-    if (waitingPollTimer) {
-        clearInterval(waitingPollTimer);
-        waitingPollTimer = null;
+        const game = playing || waiting || rematchPending;
+        if (game) {
+            await reconcile(game);
+            subscribeToGame(game.id);
+        }
+
+        startGamePolling();
+    } catch (error) {
+        console.error("Active game load error:", error);
     }
 }
 
 // ==========================================
-// ACTIVE GAME POLLING
+// SINGLE CONTINUOUS GAME POLLER
 // ==========================================
 
-function startGamePolling(gameId) {
+async function reconcile(gameHint = null) {
+    if (!currentUser) return;
+
+    try {
+        let game = gameHint;
+        if (!game) {
+            if (!currentGameData?.id) return;
+            game = await fetchGame(currentGameData.id);
+        }
+
+        if (!game) {
+            currentGameData = null;
+            return;
+        }
+
+        // The database trigger is the only authority that creates a rematch.
+        // Both clients simply observe rematch_game_id and move to that game.
+        if (game.rematch_game_id) {
+            const rematchGame = await fetchGame(game.rematch_game_id);
+            if (rematchGame) {
+                currentGameData = rematchGame;
+                await showGame(rematchGame);
+                subscribeToGame(rematchGame.id);
+                return;
+            }
+        }
+
+        currentGameData = game;
+        await showGame(game);
+        subscribeToGame(game.id);
+    } catch (error) {
+        console.error("Reconcile error:", error);
+    }
+}
+
+function startGamePolling() {
     if (gamePollTimer) return;
 
     const checkGame = async () => {
-        if (!currentGameData || currentGameData.id !== gameId) return;
-        if (moveInProgress) return;
-        if (currentGameData.status === "finished") {
-            stopGamePolling();
-            return;
-        }
-        await refreshGame(gameId);
+        if (!currentUser || !currentGameData?.id || moveInProgress) return;
+        await reconcile();
     };
 
     checkGame();
-    gamePollTimer = setInterval(checkGame, 1000);
+    gamePollTimer = setInterval(checkGame, 1500);
 }
 
 function stopGamePolling() {
@@ -1020,38 +966,36 @@ function stopGamePolling() {
 // ==========================================
 
 function subscribeToGame(gameId) {
+    if (!gameId) return;
+    if (realtimeChannel && realtimeGameId === gameId) return;
+
     if (realtimeChannel) {
         supabaseClient.removeChannel(realtimeChannel);
+        realtimeChannel = null;
+        realtimeGameId = null;
     }
 
-    realtimeChannel =
-        supabaseClient
-            .channel(`game-${gameId}`)
-            .on(
-                "postgres_changes",
-                {
-                    event: "UPDATE",
-                    schema: "public",
-                    table: "games",
-                    filter: `id=eq.${gameId}`
-                },
-                async (payload) => {
-                    console.log(
-                        "Game updated:",
-                        payload.new
-                    );
-
-                    if (!moveInProgress) {
-                        await showGame(payload.new);
-                    }
+    realtimeGameId = gameId;
+    realtimeChannel = supabaseClient
+        .channel(`game-${gameId}`)
+        .on(
+            "postgres_changes",
+            {
+                event: "UPDATE",
+                schema: "public",
+                table: "games",
+                filter: `id=eq.${gameId}`
+            },
+            async (payload) => {
+                console.log("Game updated:", payload.new);
+                if (!moveInProgress) {
+                    await reconcile(payload.new);
                 }
-            )
-            .subscribe((status) => {
-                console.log(
-                    "Realtime status:",
-                    status
-                );
-            });
+            }
+        )
+        .subscribe((status) => {
+            console.log("Realtime status:", status);
+        });
 }
 
 // ==========================================
@@ -1059,9 +1003,14 @@ function subscribeToGame(gameId) {
 // ==========================================
 
 function resetGameUI() {
-    stopWaitingForPlayerPolling();
     stopGamePolling();
-    currentGameData = null;
+    if (realtimeChannel) {
+        supabaseClient.removeChannel(realtimeChannel);
+        realtimeChannel = null;
+        realtimeGameId = null;
+    }
+        currentGameData = null;
+    lastHistoryGameId = null;
 
     currentGame.classList.add("hidden");
     gameBoard.classList.add("hidden");
