@@ -1,29 +1,14 @@
-# Tic-Tac-Toe - Stage 2
+# Tic-Tac-Toe — Stage 4
 
-Stage 2 adds:
+Stage 4 adds client-side game-rule enforcement on top of Stage 3:
 
-- Create Game
-- 6-digit numerical game code
-- Join Game
-- Player X / Player O assignment
-- Supabase Realtime game updates
-- Automatic profile creation for authenticated users
+- Only the player whose turn it is can click a cell.
+- Occupied cells cannot be clicked again.
+- A player who is not part of the game cannot make a move.
+- No moves are allowed after X wins, O wins, or a draw.
+- The board is disabled while a move is being saved.
+- The database update uses both `status = playing` and `current_turn = player symbol`, preventing stale/simultaneous moves from being accepted.
+- Realtime updates and 1-second polling continue to keep both devices synchronized.
+- Polling/realtime updates are paused while the local move is being committed so an older state cannot overwrite the move visually.
 
-## Important
-
-The Supabase SQL migration is intentionally NOT included in this ZIP because it was requested separately.
-
-## Configuration
-
-Put your existing working Supabase Project URL and Publishable Key into:
-
-`js/config.js`
-
-Do not put a Supabase secret/service-role key in frontend code.
-
-## Files
-
-- `index.html` - updated Stage 2 UI
-- `css/style.css` - updated styling
-- `js/app.js` - authentication + create/join game logic
-- `js/config.js` - Supabase frontend configuration placeholder
+No Supabase SQL change is included for Stage 4.
