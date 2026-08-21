@@ -29,6 +29,21 @@ const gameCells = Array.from(document.querySelectorAll(".cell"));
 const rematchBtn = document.getElementById("rematch-btn");
 const newGameBtn = document.getElementById("new-game-btn");
 const historyList = document.getElementById("history-list");
+const profileSection = document.getElementById("profile-section");
+const statsSection = document.getElementById("stats-section");
+const leaderboardSection = document.getElementById("leaderboard-section");
+const profileAvatar = document.getElementById("profile-avatar");
+const profileUsernameDisplay = document.getElementById("profile-username-display");
+const usernameInput = document.getElementById("username-input");
+const avatarInput = document.getElementById("avatar-input");
+const saveProfileBtn = document.getElementById("save-profile-btn");
+const profileMessage = document.getElementById("profile-message");
+const leaderboardList = document.getElementById("leaderboard-list");
+const statGames = document.getElementById("stat-games");
+const statWins = document.getElementById("stat-wins");
+const statLosses = document.getElementById("stat-losses");
+const statDraws = document.getElementById("stat-draws");
+const statWinrate = document.getElementById("stat-winrate");
 
 // ==========================================
 // CURRENT STATE
@@ -128,6 +143,10 @@ if (rematchBtn) {
 
 if (newGameBtn) {
     newGameBtn.addEventListener("click", startNewGame);
+}
+
+if (saveProfileBtn) {
+    saveProfileBtn.addEventListener("click", saveProfile);
 }
 
 async function loadGameHistory() {
@@ -282,15 +301,24 @@ async function updateUI(user) {
         authSection.classList.add("hidden");
         userSection.classList.remove("hidden");
         gameSection.classList.remove("hidden");
+        profileSection.classList.remove("hidden");
+        statsSection.classList.remove("hidden");
+        leaderboardSection.classList.remove("hidden");
 
         userEmail.textContent = user.email;
 
         await ensureProfile(user);
+        await loadProfile();
         await loadGameHistory();
+        await loadMyStats();
+        await loadLeaderboard();
     } else {
         authSection.classList.remove("hidden");
         userSection.classList.add("hidden");
         gameSection.classList.add("hidden");
+        profileSection.classList.add("hidden");
+        statsSection.classList.add("hidden");
+        leaderboardSection.classList.add("hidden");
 
         userEmail.textContent = "";
         resetGameUI();
@@ -302,6 +330,19 @@ async function updateUI(user) {
 // ==========================================
 
 async function ensureProfile(user) {
+    const { data: existing, error: readError } = await supabaseClient
+        .from("profiles")
+        .select("id, username, avatar")
+        .eq("id", user.id)
+        .maybeSingle();
+
+    if (readError) {
+        console.error("Profile read error:", readError);
+        return;
+    }
+
+    if (existing) return;
+
     const usernameBase = user.email
         ? user.email.split("@")[0]
         : "player";
@@ -313,22 +354,139 @@ async function ensureProfile(user) {
     const username =
         safeUsername || `player_${user.id.substring(0, 8)}`;
 
-    const { error } =
-        await supabaseClient
-            .from("profiles")
-            .upsert(
-                {
-                    id: user.id,
-                    username
-                },
-                {
-                    onConflict: "id"
-                }
-            );
+    const { error } = await supabaseClient
+        .from("profiles")
+        .insert({
+            id: user.id,
+            username,
+            avatar: "🙂"
+        });
 
     if (error) {
-        console.error("Profile error:", error);
+        console.error("Profile create error:", error);
     }
+}
+
+async function loadProfile() {
+    if (!currentUser) return;
+
+    const { data, error } = await supabaseClient
+        .from("profiles")
+        .select("username, avatar")
+        .eq("id", currentUser.id)
+        .maybeSingle();
+
+    if (error || !data) return;
+
+    const username = data.username || "Player";
+    const avatar = data.avatar || "🙂";
+
+    if (profileUsernameDisplay) profileUsernameDisplay.textContent = username;
+    if (profileAvatar) profileAvatar.textContent = avatar;
+    if (usernameInput) usernameInput.value = username;
+    if (avatarInput) avatarInput.value = avatar;
+}
+
+async function saveProfile() {
+    if (!currentUser) return;
+
+    const username = usernameInput.value.trim().replace(/\s+/g, " ");
+    const avatar = avatarInput.value.trim() || "🙂";
+
+    if (!username) {
+        profileMessage.textContent = "Enter a username.";
+        return;
+    }
+
+    if (username.length < 2 || username.length > 20) {
+        profileMessage.textContent = "Username must be 2–20 characters.";
+        return;
+    }
+
+    saveProfileBtn.disabled = true;
+    profileMessage.textContent = "Saving...";
+
+    const { error } = await supabaseClient
+        .from("profiles")
+        .update({ username, avatar: avatar.substring(0, 2) })
+        .eq("id", currentUser.id);
+
+    if (error) {
+        console.error("Profile save error:", error);
+        profileMessage.textContent = "Could not save profile: " + error.message;
+        saveProfileBtn.disabled = false;
+        return;
+    }
+
+    profileMessage.textContent = "Profile saved.";
+    await loadProfile();
+    await loadGameHistory();
+    await loadLeaderboard();
+    saveProfileBtn.disabled = false;
+}
+
+async function loadMyStats() {
+    if (!currentUser) return;
+
+    const { data, error } = await supabaseClient.rpc("get_player_stats", {
+        p_user_id: currentUser.id
+    });
+
+    if (error) {
+        console.error("Stats error:", error);
+        return;
+    }
+
+    const stats = Array.isArray(data) ? data[0] : data;
+    if (!stats) return;
+
+    statGames.textContent = stats.games_played ?? 0;
+    statWins.textContent = stats.wins ?? 0;
+    statLosses.textContent = stats.losses ?? 0;
+    statDraws.textContent = stats.draws ?? 0;
+    statWinrate.textContent = `${Number(stats.win_rate || 0).toFixed(1)}%`;
+}
+
+async function loadLeaderboard() {
+    if (!leaderboardList) return;
+
+    leaderboardList.innerHTML = "<p>Loading leaderboard...</p>";
+
+    const { data, error } = await supabaseClient.rpc("get_leaderboard", {
+        p_limit: 20
+    });
+
+    if (error) {
+        console.error("Leaderboard error:", error);
+        leaderboardList.innerHTML = "<p>Could not load leaderboard.</p>";
+        return;
+    }
+
+    if (!data || data.length === 0) {
+        leaderboardList.innerHTML = "<p>No completed games yet.</p>";
+        return;
+    }
+
+    const header = document.createElement("div");
+    header.className = "leaderboard-row leaderboard-header";
+    header.innerHTML = `<div>#</div><div>Player</div><div>Games</div><div>Wins</div><div>Win %</div>`;
+
+    const rows = data.map((player, index) => {
+        const row = document.createElement("div");
+        row.className = "leaderboard-row";
+        row.innerHTML = `
+            <div class="leaderboard-rank">${index + 1}</div>
+            <div class="leaderboard-player">
+                <span class="leaderboard-avatar">${escapeHtml(player.avatar || "🙂")}</span>
+                <strong class="leaderboard-username">${escapeHtml(player.username || "Player")}</strong>
+            </div>
+            <div class="leaderboard-number">${player.games_played ?? 0}</div>
+            <div class="leaderboard-number">${player.wins ?? 0}</div>
+            <div class="leaderboard-number">${Number(player.win_rate || 0).toFixed(1)}%</div>`;
+        return row;
+    });
+
+    leaderboardList.replaceChildren(header, ...rows);
 }
 
 // ==========================================
@@ -905,6 +1063,17 @@ function resetGameUI() {
     if (rematchBtn) rematchBtn.classList.add("hidden");
     if (newGameBtn) newGameBtn.classList.add("hidden");
     if (historyList) historyList.innerHTML = "";
+    if (leaderboardList) leaderboardList.innerHTML = "";
+    if (profileUsernameDisplay) profileUsernameDisplay.textContent = "Player";
+    if (profileAvatar) profileAvatar.textContent = "🙂";
+    if (usernameInput) usernameInput.value = "";
+    if (avatarInput) avatarInput.value = "";
+    if (profileMessage) profileMessage.textContent = "";
+    if (statGames) statGames.textContent = "0";
+    if (statWins) statWins.textContent = "0";
+    if (statLosses) statLosses.textContent = "0";
+    if (statDraws) statDraws.textContent = "0";
+    if (statWinrate) statWinrate.textContent = "0%";
 
     gameCodeInput.value = "";
 }
