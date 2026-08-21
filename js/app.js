@@ -505,6 +505,8 @@ createGameBtn.addEventListener("click", async () => {
     try {
         const gameCode = await generateUniqueGameCode();
 
+        const newBoard = Array(9).fill("");
+
         const { data, error } =
             await supabaseClient
                 .from("games")
@@ -512,7 +514,7 @@ createGameBtn.addEventListener("click", async () => {
                     game_code: gameCode,
                     player_x: currentUser.id,
                     player_o: null,
-                    board: ["", "", "", "", "", "", "", ""],
+                    board: Array(9).fill(""),
                     current_turn: "X",
                     status: "waiting",
                     winner: null
