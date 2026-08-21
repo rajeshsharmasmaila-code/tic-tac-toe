@@ -253,3 +253,164 @@ button:disabled {
     margin-top: 6px;
     font-weight: bold;
 }
+
+/* Stage 6: profile, statistics and leaderboard */
+#user-section {
+    margin-top: 20px;
+}
+
+.profile-header {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    justify-content: center;
+    margin-bottom: 12px;
+}
+
+.profile-header-info {
+    display: flex;
+    flex-direction: column;
+    text-align: left;
+    min-width: 0;
+}
+
+.profile-header-info strong {
+    font-size: 18px;
+}
+
+.profile-header-info span {
+    color: #666;
+    font-size: 13px;
+    word-break: break-all;
+}
+
+.profile-avatar {
+    width: 52px;
+    height: 52px;
+    border-radius: 50%;
+    display: grid;
+    place-items: center;
+    background: #eeeeee;
+    font-size: 28px;
+}
+
+.dashboard-section {
+    margin-top: 20px;
+    padding: 18px;
+    border: 1px solid #ddd;
+    border-radius: 12px;
+    background: #fafafa;
+    text-align: left;
+}
+
+.dashboard-section h2 {
+    text-align: center;
+    margin-top: 0;
+}
+
+.profile-editor {
+    display: grid;
+    gap: 6px;
+}
+
+.profile-editor label {
+    font-size: 13px;
+    color: #666;
+    margin-top: 4px;
+}
+
+.profile-editor button {
+    margin-top: 6px;
+}
+
+#profile-message {
+    min-height: 20px;
+    margin: 4px 0 0;
+    text-align: center;
+}
+
+.stats-grid {
+    display: grid;
+    grid-template-columns: repeat(5, 1fr);
+    gap: 8px;
+}
+
+.stat-card {
+    padding: 12px 6px;
+    border-radius: 10px;
+    background: #eeeeee;
+    text-align: center;
+}
+
+.stat-card strong {
+    display: block;
+    font-size: 22px;
+}
+
+.stat-card span {
+    display: block;
+    margin-top: 3px;
+    color: #666;
+    font-size: 11px;
+}
+
+.leaderboard-row {
+    display: grid;
+    grid-template-columns: 38px 1fr 48px 55px 65px;
+    align-items: center;
+    gap: 6px;
+    padding: 10px 6px;
+    border-bottom: 1px solid #ddd;
+}
+
+.leaderboard-row:last-child {
+    border-bottom: 0;
+}
+
+.leaderboard-rank {
+    font-weight: bold;
+    text-align: center;
+}
+
+.leaderboard-player {
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    min-width: 0;
+}
+
+.leaderboard-avatar {
+    font-size: 20px;
+}
+
+.leaderboard-username {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.leaderboard-number {
+    text-align: center;
+    font-size: 13px;
+}
+
+.leaderboard-header {
+    font-size: 11px;
+    color: #666;
+    font-weight: bold;
+}
+
+@media (max-width: 480px) {
+    .stats-grid {
+        grid-template-columns: repeat(3, 1fr);
+    }
+
+    .stat-card:nth-child(4),
+    .stat-card:nth-child(5) {
+        grid-column: span 1;
+    }
+
+    .leaderboard-row {
+        grid-template-columns: 28px 1fr 40px 48px 55px;
+    }
+}
